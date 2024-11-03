@@ -20,8 +20,11 @@
 2. 創建虛擬環境：`python -m venv venv`
 3. 激活虛擬環境：`.\venv\Scripts\activate`
 4. 安裝依賴：`python -m pip install -r requirements.txt`
-5. 在`.env`文件中配置您的Anthropic API密鑰和螢幕分辨率
+5. 在`.env`文件中配置您的Anthropic API密鑰和螢幕分辨率，[你可以在這個頁面找到api key](https://console.anthropic.com/dashboard)
 6. 運行應用程序：`python -m streamlit run run.py`
+7. 你使用的python建議為3.11.x 較新或較舊的版本可能會有一些神秘的相容問題
+8. 若是遇到環境上的問題，[可以參考這部影片](https://www.youtube.com/watch?v=X4WO_gSPn9E)，影片中展示了乾淨win10一步步設定環境的過程(但基本上就是看到出錯就丟進ai讓他幫你想就好)
+
 
 ## 使用方法
 1. 啟動應用程序後，在瀏覽器中打開http://localhost:8501
