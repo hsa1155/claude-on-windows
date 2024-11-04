@@ -1,5 +1,6 @@
 > 以下內容及程式實現不是由我本人原創，而是基於以下專案的 fork 版本：
 > - https://github.com/Cognitive-Creators-AI/claude-on-windows
+> - https://gist.github.com/santolucito/728c2da6eff51113ddc4ad14a56594ab
 ---
 # claude-on-windows
 一個與Windows相容的[Anthropic電腦使用演示](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo)版本，經過修改可以在Windows上原生運行，無需Docker容器。
@@ -10,6 +11,7 @@
 - 避免給模型訪問敏感數據（如賬戶登錄信息）的權限，以防止信息被盜
 - 將互聯網訪問限制在允許清單中的域名範圍內，以減少接觸惡意內容的機會
 - 對可能產生實質性現實後果的決定，以及任何需要明確同意的任務（如接受cookies、執行財務交易或同意服務條款），請諮詢人類確認
+- 目前claude無法正確的輸入中文，並且在輸入法為中文時會導致他的操作被輸入法卡住，記得使用時把輸入法切換回英文
 
 在某些情況下，Claude會執行在內容中找到的命令，即使這些命令與用戶的指示相衝突。例如，網頁上的指示或圖片中包含的指示可能會覆蓋用戶指示或導致Claude出錯。我們建議採取預防措施，將Claude與敏感數據和操作隔離，以避免與提示注入相關的風險。
 
