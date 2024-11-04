@@ -1,6 +1,9 @@
 > 以下內容及程式實現不是由我本人原創，而是基於以下專案的 fork 版本：
 > - https://github.com/Cognitive-Creators-AI/claude-on-windows
 > - https://gist.github.com/santolucito/728c2da6eff51113ddc4ad14a56594ab
+
+在這個版本中，我將第二個檔案所做的改動整合到windows版本上，現在插入了適當的延遲來規避rate limit，同時也新增了多個指令中間的延遲
+並將prompt cacheing也加入到windows版本，用以減少送出的token數量
 ---
 # claude-on-windows
 一個與Windows相容的[Anthropic電腦使用演示](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo)版本，經過修改可以在Windows上原生運行，無需Docker容器。
