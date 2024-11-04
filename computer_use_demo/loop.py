@@ -8,10 +8,13 @@ from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, cast
-
-from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, APIResponse
+import asyncio
+                
+import httpx
+from anthropic import Anthropic, AnthropicBedrock, AnthropicVertex, APIResponse,APIResponseValidationError,APIError,APIStatusError
 from anthropic.types import (
     ToolResultBlockParam,
+    
 )
 from anthropic.types.beta import (
     BetaContentBlock,
@@ -21,11 +24,18 @@ from anthropic.types.beta import (
     BetaMessageParam,
     BetaTextBlockParam,
     BetaToolResultBlockParam,
+    BetaCacheControlEphemeralParam,
+    BetaTextBlock,
+    BetaToolUseBlockParam,
+    
 )
+import time
 
 from .tools import ComputerTool, ToolCollection, ToolResult
 
 BETA_FLAG = "computer-use-2024-10-22"
+COMPUTER_USE_BETA_FLAG = "computer-use-2024-10-22"
+PROMPT_CACHING_BETA_FLAG = "prompt-caching-2024-07-31"
 
 class APIProvider(StrEnum):
     ANTHROPIC = "anthropic"
@@ -72,12 +82,15 @@ async def sampling_loop(
     provider: APIProvider,
     system_prompt_suffix: str,
     messages: list[BetaMessageParam],
-    output_callback: Callable[[BetaContentBlock], None],
+    output_callback: Callable[[BetaContentBlockParam], None],
     tool_output_callback: Callable[[ToolResult, str], None],
-    api_response_callback: Callable[[APIResponse[BetaMessage]], None],
+    api_response_callback: Callable[
+        [httpx.Request, httpx.Response | object | None, Exception | None], None
+    ],
     api_key: str,
     only_n_most_recent_images: int | None = None,
     max_tokens: int = 4096,
+    max_message_pairs: int = 6,
 ):
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
@@ -85,30 +98,58 @@ async def sampling_loop(
     tool_collection = ToolCollection(
         ComputerTool(),
     )
-    system = (
-        f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}"
+    system = BetaTextBlockParam(
+        type="text",
+        text=f"{SYSTEM_PROMPT}{' ' + system_prompt_suffix if system_prompt_suffix else ''}",
     )
 
     while True:
-        if only_n_most_recent_images:
-            _maybe_filter_to_n_most_recent_images(messages, only_n_most_recent_images)
+        # Trim message history before adding new messages
+        if len(messages) > max_message_pairs * 2:
+            messages = messages[-max_message_pairs * 2:]
 
+        enable_prompt_caching = False
+        betas = [COMPUTER_USE_BETA_FLAG]
+        image_truncation_threshold = 10
         if provider == APIProvider.ANTHROPIC:
             client = Anthropic(api_key=api_key)
         elif provider == APIProvider.VERTEX:
             client = AnthropicVertex()
         elif provider == APIProvider.BEDROCK:
             client = AnthropicBedrock()
+        
+        if enable_prompt_caching:
+            betas.append(PROMPT_CACHING_BETA_FLAG)
+            _inject_prompt_caching(messages)
+            # Is it ever worth it to bust the cache with prompt caching?
+            image_truncation_threshold = 20
+            system["cache_control"] = {"type": "ephemeral"}
+
+        if only_n_most_recent_images:
+            _maybe_filter_to_n_most_recent_images(
+                messages,
+                only_n_most_recent_images,
+                min_removal_threshold=image_truncation_threshold,
+            )
 
         # Call the API
-        raw_response = client.beta.messages.with_raw_response.create(
-            max_tokens=max_tokens,
-            messages=messages,
-            model=model,
-            system=system,
-            tools=tool_collection.to_params(),
-            betas=["computer-use-2024-10-22"],
-        )
+        #to avoid rate limit sleep for a while as cooldown
+        time.sleep(5)
+        try:
+            raw_response = client.beta.messages.with_raw_response.create(
+                max_tokens=max_tokens,
+                messages=messages,
+                model=model,
+                system=[system],
+                tools=tool_collection.to_params(),
+                betas=betas,
+            )
+        except (APIStatusError, APIResponseValidationError) as e:
+            api_response_callback(e.request, e.response, e)
+            return messages
+        except APIError as e:
+            api_response_callback(e.request, e.body, e)
+            return messages
 
         api_response_callback(cast(APIResponse[BetaMessage], raw_response))
 
@@ -125,6 +166,8 @@ async def sampling_loop(
         for content_block in cast(list[BetaContentBlock], response.content):
             output_callback(content_block)
             if content_block.type == "tool_use":
+                #add delay to make series of tool_use become better
+                time.sleep(1)
                 result = await tool_collection.run(
                     name=content_block.name,
                     tool_input=cast(dict[str, Any], content_block.input),
@@ -165,7 +208,7 @@ def _maybe_filter_to_n_most_recent_images(
             if isinstance(item, dict) and item.get("type") == "tool_result"
         ],
     )
-
+    #計算messages中有多少張圖
     total_images = sum(
         1
         for tool_result in tool_result_blocks
@@ -229,3 +272,41 @@ def _maybe_prepend_system_tool_result(result: ToolResult, result_text: str):
     if result.system:
         result_text = f"<system>{result.system}</system>\n{result_text}"
     return result_text
+
+
+def _response_to_params(
+    response: BetaMessage,
+) -> list[BetaTextBlockParam | BetaToolUseBlockParam]:
+    res: list[BetaTextBlockParam | BetaToolUseBlockParam] = []
+    for block in response.content:
+        if isinstance(block, BetaTextBlock):
+            res.append({"type": "text", "text": block.text})
+        else:
+            res.append(cast(BetaToolUseBlockParam, block.model_dump()))
+    return res
+
+
+def _inject_prompt_caching(
+    messages: list[BetaMessageParam],
+):
+    """
+    Set cache breakpoints for the 3 most recent turns
+    one cache breakpoint is left for tools/system prompt, to be shared across sessions
+    """
+
+    breakpoints_remaining = 3
+    for message in reversed(messages):
+        if message["role"] == "user" and isinstance(
+            content := message["content"], list
+        ):
+            if breakpoints_remaining:
+                breakpoints_remaining -= 1
+                content[-1]["cache_control"] = BetaCacheControlEphemeralParam(
+                    {"type": "ephemeral"}
+                )
+            else:
+                content[-1].pop("cache_control", None)
+                # we'll only every have one extra turn per loop
+                break
+
+
