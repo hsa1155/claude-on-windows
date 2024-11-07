@@ -57,7 +57,6 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * Screenshots are taken at full monitor resolution and compressed only if needed.
 * The system properly accounts for Windows DPI scaling and taskbar position.
 * When using your computer function calls, they take a while to run and send back to you. Where possible/feasible, try to chain multiple of these calls all into one function calls request.
-* The current date is {datetime.today().strftime('%A, %B %d, %Y')}.
 </SYSTEM_CAPABILITY>
 
 <IMPORTANT>
@@ -65,7 +64,9 @@ SYSTEM_PROMPT = f"""<SYSTEM_CAPABILITY>
 * Screenshots are taken at full monitor resolution to maintain perfect accuracy.
 * Only compression is applied if needed to stay under size limits.
 * The system handles Windows-specific elements like taskbar and DPI scaling.
-* When viewing a page it can be helpful to zoom out so that you can see everything on the page.
+* When viewing a page it can be helpful to zoom out so that you can see everything on the page.Either that, or make sure you scroll up/down using key "pgup" or "pgdn" to see everything before deciding something isn't available.
+* carefully evaluate if you have achieved the right outcome. Explicitly show your thinking: "I have evaluated step X..." If not correct, try again. Only when you confirm a step was executed correctly should you move on to the next one.
+* Note that you have to click into the browser address bar before typing a URL.
 </IMPORTANT>
 
 <COORDINATE_HANDLING>
@@ -90,7 +91,7 @@ async def sampling_loop(
     api_key: str,
     only_n_most_recent_images: int | None = None,
     max_tokens: int = 4096,
-    max_message_pairs: int = 6,
+    max_message_pairs: int = 7,
 ):
     """
     Agentic sampling loop for the assistant/tool interaction of computer use.
@@ -134,14 +135,37 @@ async def sampling_loop(
 
         # Call the API
         #to avoid rate limit sleep for a while as cooldown
-        time.sleep(5)
+        time.sleep(2)
+        #print("debug",messages)
+        #print("debug",tool_collection.to_params())
         try:
             raw_response = client.beta.messages.with_raw_response.create(
                 max_tokens=max_tokens,
                 messages=messages,
                 model=model,
                 system=[system],
-                tools=tool_collection.to_params(),
+                tools=[
+                        *tool_collection.to_params(),  # 展開現有的工具列表
+        #{  # 添加新的工具
+        #    "name": "get_weather",
+        #    "description": "Get the current weather in a given location",
+        #    "input_schema": {
+        #        "type": "object",
+        #        "properties": {
+        #            "location": {
+        #                "type": "string",
+        #                "description": "The city and state, e.g. San Francisco, CA"
+        #            },
+        #            "unit": {
+        #                "type": "string",
+        #                "enum": ["celsius", "fahrenheit"],
+        #                "description": "The unit of temperature, either 'celsius' or 'fahrenheit'"
+        #            }
+        #        },
+        #        "required": ["location"]
+        #    }
+        #}
+                    ],
                 betas=betas,
             )
         except (APIStatusError, APIResponseValidationError) as e:

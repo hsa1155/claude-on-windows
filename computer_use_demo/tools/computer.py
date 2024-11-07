@@ -59,6 +59,7 @@ Action = Literal[
     "double_click",
     "screenshot",
     "cursor_position",
+    "must_call",
 ]
 
 class Resolution(TypedDict):
@@ -377,6 +378,11 @@ class ComputerTool(BaseAnthropicTool):
                     logger.debug(f"Pressing key combination: {key_parts}")
                     pyautogui.hotkey(*key_parts)
                 else:
+                    text_lower = text.lower()
+                    if text_lower == "page_up":
+                        text = "pgup"
+                    elif text_lower == "page_down":
+                        text = "pgdn"
                     logger.debug(f"Pressing key: {text}")
                     pyautogui.press(text)
                 return await self.take_screenshot()
@@ -411,6 +417,7 @@ class ComputerTool(BaseAnthropicTool):
                 api_x, api_y = self.scale_coordinates(ScalingSource.COMPUTER, pos.x, pos.y)
                 return ToolResult(output=f"X={api_x},Y={api_y}")
             else:
+                print(f"fucking do clicks")
                 if coordinate is not None:
                     # Scale coordinates and use smart click
                     x, y = self.scale_coordinates(ScalingSource.API, coordinate[0], coordinate[1])
@@ -426,6 +433,13 @@ class ComputerTool(BaseAnthropicTool):
                     click_map[action]()
                 
                 return await self.take_screenshot()
+            
+        #if action in ("must_call"):
+        #    print(f"fucking debug call: must_call")
+        #    logger.debug(f"fucking debug call: must_call")
+        #    logger.debug(f"fucking debug call: must_call")
+        #    pyautogui.click(button='right')
+
 
         raise ToolError(f"Invalid action: {action}")
 
